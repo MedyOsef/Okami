@@ -8,6 +8,23 @@ from scapy.arch import get_if_list
 import matplotlib.pyplot as plt  # Pour les graphiques
 import time  # Pour gérer les horodatages des SYN
 from collections import defaultdict  # Pour stocker les tentatives SYN
+from PIL import Image
+
+
+
+# Fonction pour redimensionner l'image
+def resize_image(image_path, new_width, new_height):
+    image = Image.open(image_path)
+    image = image.resize((new_width, new_height))  # Redimensionner l'image
+    image.save("resized_image.png")  # Sauvegarder la nouvelle image redimensionnée
+    return "resized_image.png"
+
+# Chemin de l'image d'origine
+image_path = "assets/logo-7.png"
+
+# Redimensionner l'image (par exemple 200x200)
+resized_image_path = resize_image(image_path, 110, 110)
+
 
 # Définir le thème et les éléments de l'interface
 sg.theme("DarkGrey15")
@@ -23,7 +40,7 @@ SYN_THRESHOLD = 5
 TIME_WINDOW = 10  # en secondes
 
 # Définition du menu
-menu_def = [['&File', ['!&Open', '&Save::savekey', '---', '&Properties', 'E&xit']],
+menu_def = [['&File', ['&Open', '&Save::savekey', '---', '&Properties', 'E&xit']],
             ['&Help', ['&About...']]]
 
 # Obtenir les interfaces réseau
@@ -35,20 +52,20 @@ capiface = ifaces[1]
 
 # Définir la disposition de l'interface graphique
 layout = [[sg.Menu(menu_def)],
-          [sg.Text("Interface:", font=('Helvetica Bold', 10)),sg.Combo(values=ifaces, readonly=True, key='-COMBO-', enable_events=True, default_value=ifaces[1])],
+          [sg.Text("Interface:", font=('Helvetica Bold', 10)), sg.Combo(values=ifaces, readonly=True, key='-COMBO-', enable_events=True, default_value=ifaces[1]),
+           sg.Image(filename=resized_image_path, pad=((780, 0) ,0)),],
           [sg.Button("Start Capture", key="-startcap-", button_color=('#f3f3f3', '#0a85d9')),
            sg.Button("Stop Capture", key="-stopcap-", disabled=True),
            sg.Button("Save Capture", key="-savepcap-", disabled=True),
            sg.Button("Show Proto Stats", key="-showstats-", button_color=('#0a85d9', '#f3f3f3')),],  # Bouton pour afficher les statistiques
-          [sg.Text("ALL PACKETS", font=('Helvetica Bold', 14), size=(60, None), justification="left"),
-           sg.Text("ALERT PACKETS", font=('Helvetica Bold', 14), size=(60, None), justification="left")],
+          [sg.Text("ALL PACKETS", font=('Helvetica Bold', 14), size=(52, None), justification="left"),
+           sg.Text("ALERT PACKETS", font=('Helvetica Bold', 14), size=(70, None), justification="left")],
           [sg.Listbox(key='-pktsall-', size=(80,20), values=alert_list, enable_events=True, text_color='green'),
            sg.Listbox(key='-alerts-', size=(80,20), values=pktsummarylist, enable_events=True, text_color='red')],
-
 ]
 
 # Créer la fenêtre
-window = sg.Window("Ōkami", layout, size=(1200, 800), finalize=True, resizable=True)
+window = sg.Window("Ōkami", layout, size=(1200, 800), finalize=True)
 
 pkt_list = []  # Pour stocker les objets paquet
 alert_list = []  # Liste pour stocker les alertes
