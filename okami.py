@@ -34,10 +34,7 @@ layout = [[sg.Menu(menu_def)],
            sg.Button("Save Capture", key="-savepcap-", disabled=True),
            sg.Button("Show Proto Stats", key="-showstats-", button_color=('#0a85d9', '#f3f3f3')),],  # Bouton pour afficher les statistiques
           [sg.Text("ALL PACKETS", font=('Helvetica Bold', 20))],
-          [sg.Listbox(key="-pktsall-",
-                      size=(100, 20),
-                      enable_events=True,
-                      values=pktsummarylist, text_color='green')]
+          [sg.Listbox(key="-pktsall-", size=(100, 20), enable_events=True, values=pktsummarylist, text_color='green')]
           ]
 
 # Créer la fenêtre

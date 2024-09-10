@@ -1,4 +1,5 @@
 import PySimpleGUI as sg  # Pour l'interface graphique
+import psutil
 import scapy.all as scp  # Pour la capture de paquets
 import scapy.arch.windows as scpwinarch  # Pour les interfaces Windows
 import threading  # Pour exécuter la capture de paquets en parallèle
@@ -9,6 +10,7 @@ import matplotlib.pyplot as plt  # Pour les graphiques
 import time  # Pour gérer les horodatages des SYN
 from collections import defaultdict  # Pour stocker les tentatives SYN
 from PIL import Image
+import socket
 
 
 
@@ -34,11 +36,6 @@ alert_list = []
 pktsummarylist = []
 updatepklist = False  # Indique si la capture est en cours
 
-# Variables globales pour la détection des scans SYN
-syn_attempts = defaultdict(list)
-SYN_THRESHOLD = 5
-TIME_WINDOW = 10  # en secondes
-
 # Définition du menu
 menu_def = [['&File', ['&Open', '&Save::savekey', '---', '&Properties', 'E&xit']],
             ['&Help', ['&About...']]]
@@ -48,11 +45,11 @@ if platform.system() == "Windows":
     ifaces = [str(x["name"]) for x in scpwinarch.get_windows_if_list() if len(str(x["name"])) <= 26]
 else:
     ifaces = get_if_list()
-capiface = ifaces[1]
+capiface = ifaces[2]
 
 # Définir la disposition de l'interface graphique
 layout = [[sg.Menu(menu_def)],
-          [sg.Text("Interface:", font=('Helvetica Bold', 10)), sg.Combo(values=ifaces, readonly=True, key='-COMBO-', enable_events=True, default_value=ifaces[1]),
+          [sg.Text("Interface:", font=('Helvetica Bold', 10)), sg.Combo(values=ifaces, readonly=True, key='-COMBO-', enable_events=True, default_value=ifaces[2]),
            sg.Image(filename=resized_image_path, pad=((780, 0) ,0)),],
           [sg.Button("Start Capture", key="-startcap-", button_color=('#f3f3f3', '#0a85d9')),
            sg.Button("Stop Capture", key="-stopcap-", disabled=True),
@@ -67,6 +64,20 @@ layout = [[sg.Menu(menu_def)],
 # Créer la fenêtre
 window = sg.Window("Ōkami", layout, size=(1200, 800), finalize=True)
 
+def get_host_ip(interface):
+# Obtenir les informations de toutes les interfaces réseau
+    interfaces = psutil.net_if_addrs()
+
+    # Vérifier si l'interface existe et récupérer son adresse IPv4
+    if interface in interfaces:
+        for address in interfaces[interface]:
+            if address.family == socket.AF_INET:  # Utiliser socket.AF_INET
+                return address.address
+    else:
+        pass
+
+
+
 pkt_list = []  # Pour stocker les objets paquet
 alert_list = []  # Liste pour stocker les alertes
 
@@ -79,7 +90,8 @@ def pkt_process(pkt):
     pkt_list.append(pkt)  # Ajouter le paquet à la liste des paquets capturés
 
     # Appel de la fonction de détection de scan SYN
-    detect_syn_scan(pkt)
+    # detect_syn_scan(pkt)
+    detect_scans(pkt)
 
 # Fonction pour démarrer la capture de paquets
 def start_capture():
@@ -101,12 +113,36 @@ def start_capture():
     sniffthread.start()
 
 # Fonction pour afficher les alertes à l'écran
-#def display_alert(message):
-    #alert_list.append(message)
-    #window["-alerts-"].update(values=alert_list, scroll_to_index=len(alert_list))
+"""def display_alert(message):
+    alert_list.append(message)
+    window["-alerts-"].update(values=alert_list, scroll_to_index=len(alert_list))"""
 
+alerted_ips = {}
+# Variables globales pour la détection des scans
+scan_attempts = defaultdict(list)
+SYN_THRESHOLD = 10
+FIN_THRESHOLD = 5
+NULL_THRESHOLD = 5
+XMAS_THRESHOLD = 5
+TIME_WINDOW = 20 # Fenêtre de temps pour détecter des multiples scans
+
+def display_alert(message, src_ip):
+    current_time = time.time()
+    if src_ip != get_host_ip(capiface):
+        # Si l'IP a été alertée récemment, ignorer la nouvelle alerte
+        if src_ip in alerted_ips and current_time - alerted_ips[src_ip] < TIME_WINDOW:
+            return
+
+        alert_list.append(message)
+        window["-alerts-"].update(values=alert_list, scroll_to_index=len(alert_list))
+
+        # Mettre à jour le timestamp de la dernière alerte pour cette IP
+        alerted_ips[src_ip] = current_time
+
+
+########################################################################
 # Fonction de détection de scan SYN améliorée
-def detect_syn_scan(pkt):
+"""def detect_syn_scan(pkt):
     if pkt.haslayer(scp.TCP) and pkt[scp.TCP].flags == 'S':  # Vérifier si le paquet est un SYN
         src_ip = pkt[scp.IP].src
         current_time = time.time()
@@ -122,7 +158,56 @@ def detect_syn_scan(pkt):
             alert_message = f"[ALERTE] Scan SYN détecté de {src_ip} avec {len(syn_attempts[src_ip])} tentatives SYN en {TIME_WINDOW} secondes."
             #print(alert_message)
             #display_alert(alert_message)  # Afficher l'alerte à l'écran
-            alert_list.append(alert_message)
+            alert_list.append(alert_message)"""
+
+################################################################
+
+
+def detect_scans(pkt):
+    global scan_attempts
+    current_time = time.time()
+
+    if pkt.haslayer(scp.IP):
+        src_ip = pkt[scp.IP].src
+
+        # DÉTECTION SYN
+        if pkt.haslayer(scp.TCP) and pkt[scp.TCP].flags == 'S':
+            scan_attempts[src_ip].append(('SYN', current_time))
+            syn_attempts = [t for t in scan_attempts[src_ip] if t[0] == 'SYN' and current_time - t[1] <= TIME_WINDOW]
+            if len(syn_attempts) >= SYN_THRESHOLD:
+                alert_message = f"[ALERTE] Scan SYN détecté de {src_ip} avec {len(syn_attempts)} tentatives SYN."
+                display_alert(alert_message, src_ip)
+
+        # DÉTECTION FIN
+        elif pkt.haslayer(scp.TCP) and pkt[scp.TCP].flags == 'F':
+            scan_attempts[src_ip].append(('FIN', current_time))
+            fin_attempts = [t for t in scan_attempts[src_ip] if t[0] == 'FIN' and current_time - t[1] <= TIME_WINDOW]
+            if len(fin_attempts) >= FIN_THRESHOLD:
+                alert_message = f"[ALERTE] Scan FIN détecté de {src_ip} avec {len(fin_attempts)} tentatives FIN."
+                display_alert(alert_message, src_ip)
+
+        # DÉTECTION NULL
+        elif pkt.haslayer(scp.TCP) and pkt[scp.TCP].flags == 0:
+            scan_attempts[src_ip].append(('NULL', current_time))
+            null_attempts = [t for t in scan_attempts[src_ip] if t[0] == 'NULL' and current_time - t[1] <= TIME_WINDOW]
+            if len(null_attempts) >= NULL_THRESHOLD:
+                alert_message = f"[ALERTE] Scan NULL détecté de {src_ip} avec {len(null_attempts)} tentatives NULL."
+                display_alert(alert_message, src_ip)
+
+        # DÉTECTION XMAS
+        elif pkt.haslayer(scp.TCP) and pkt[scp.TCP].flags == 0x29:  # FIN + PSH + URG
+            scan_attempts[src_ip].append(('XMAS', current_time))
+            xmas_attempts = [t for t in scan_attempts[src_ip] if t[0] == 'XMAS' and current_time - t[1] <= TIME_WINDOW]
+            if len(xmas_attempts) >= XMAS_THRESHOLD:
+                alert_message = f"[ALERTE] Scan XMAS détecté de {src_ip} avec {len(xmas_attempts)} tentatives XMAS."
+                display_alert(alert_message, src_ip)
+
+        # Nettoyage des anciennes tentatives
+        scan_attempts[src_ip] = [attempt for attempt in scan_attempts[src_ip] if
+                                 current_time - attempt[1] <= TIME_WINDOW]
+
+
+
 
 # Fonction pour mettre à jour et afficher les statistiques
 def show_stats():
