@@ -100,3 +100,4 @@ def packetFilter(packet: capture):
 for packet in capture.sniff_continuously():
     # Filtre les paquets
     packetFilter(packet)
+
