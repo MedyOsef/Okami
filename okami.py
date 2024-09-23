@@ -11,7 +11,7 @@ import time  # Pour gérer les horodatages des SYN
 from collections import defaultdict  # Pour stocker les tentatives SYN
 from PIL import Image
 import socket
-
+import alert_messages_sender
 
 
 # Fonction pour redimensionner l'image
@@ -50,21 +50,23 @@ capiface = ifaces[2]
 # Définir la disposition de l'interface graphique
 layout = [[sg.Menu(menu_def)],
           [sg.Text("Interface:", font=('Helvetica Bold', 10)),
-           sg.Combo(values=ifaces, readonly=True, key='-COMBO-', enable_events=True, default_value=ifaces[2]),
-            sg.Text('BPF Filters:', pad=((50, 0) ,0)), sg.Input(key='-FILTER-', size=(40, 10), font=('Helvetica Bold', 13)), sg.Button('Apply', button_color=('#f3f3f3', '#0a85d9'), size=(10, None), font=('Helvetica Bold', 11)),
-           sg.Image(filename=resized_image_path, pad=((300, 0) ,0)),],
+           sg.Combo(values=ifaces, readonly=True, key='-COMBO-', enable_events=True, default_value=ifaces[2], text_color='#f3f3f3'),
+            sg.Text('BPF Filters:', pad=((20, 0) ,0)),
+            sg.Input(key='-FILTERED-', size=(70, 10), font=('Helvetica', 13),default_text="", text_color='#f3f3f3'),
+            sg.Button('Apply', button_color=('#f3f3f3', '#0a85d9'), size=(10, None), font=('Helvetica Bold', 11)),
+           sg.Image(filename=resized_image_path, pad=((70, 0) ,0)),],
           [sg.Button("Start Capture", key="-startcap-", button_color=('#f3f3f3', '#0a85d9')),
            sg.Button("Stop Capture", key="-stopcap-", disabled=True),
            sg.Button("Save Capture", key="-savepcap-", disabled=True),
            sg.Button("Show Proto Stats", key="-showstats-", button_color=('#0a85d9', '#f3f3f3')),],  # Bouton pour afficher les statistiques
           [sg.Text("ALL PACKETS", font=('Helvetica Bold', 14), size=(52, None), justification="left"),
-           sg.Text("ALERT PACKETS", font=('Helvetica Bold', 14), size=(70, None), justification="left")],
-          [sg.Listbox(key='-pktsall-', size=(80,20), values=alert_list, enable_events=True, text_color='green'),
-           sg.Listbox(key='-alerts-', size=(80,20), values=pktsummarylist, enable_events=True, text_color='red')],
+           sg.Text("ALERT PACKETS", font=('Helvetica Bold', 14),pad=((145, 0) ,0), size=(70, None) , justification="left")],
+          [sg.Listbox(key='-pktsall-', size=(78,31),font=('Helvetica', 12), values=alert_list, enable_events=True, text_color='#0a85d9'),
+           sg.Listbox(key='-alerts-', size=(95,31),font=('Helvetica', 12), values=pktsummarylist, enable_events=True, text_color='red')],
 ]
 
 # Créer la fenêtre
-window = sg.Window("Ōkami", layout, icon="assets/logo.ico", size=(1200, 800), finalize=True)
+window = sg.Window("Ōkami", layout, icon="assets/logo.ico", size=(1350, 800), finalize=True)
 
 def get_host_ip(interface):
 # Obtenir les informations de toutes les interfaces réseau
@@ -82,13 +84,14 @@ def get_host_ip(interface):
 
 pkt_list = []  # Pour stocker les objets paquet
 alert_list = []  # Liste pour stocker les alertes
+filter_expression = ""
 
 # Fonction de traitement des paquets
 def pkt_process(pkt):
     global pktsummarylist
     global pkt_list
     pkt_summary = pkt.summary()  # Obtenir un résumé du paquet
-    pktsummarylist.append(pkt_summary)  # Ajouter le résumé à la liste
+    pktsummarylist.append(pkt_summary+datetime.now().strftime(" -%d/%m/%Y %H:%M:%S"))  # Ajouter le résumé à la liste
     pkt_list.append(pkt)  # Ajouter le paquet à la liste des paquets capturés
 
     # Appel de la fonction de détection de scan SYN
@@ -106,7 +109,7 @@ def start_capture():
     def capture():
         while updatepklist:
             try:
-                scp.sniff(prn=pkt_process, iface=capiface, filter="", store=0)
+                scp.sniff(prn=pkt_process, iface=capiface, filter=filter_expression, store=0)
             except Exception as e:
                 print(f"Capture error: {e}")
                 continue
@@ -114,15 +117,10 @@ def start_capture():
     sniffthread = threading.Thread(target=capture, daemon=True)
     sniffthread.start()
 
-# Fonction pour afficher les alertes à l'écran
-"""def display_alert(message):
-    alert_list.append(message)
-    window["-alerts-"].update(values=alert_list, scroll_to_index=len(alert_list))"""
-
 alerted_ips = {}
 # Variables globales pour la détection des scans
 scan_attempts = defaultdict(list)
-SYN_THRESHOLD = 10
+SYN_THRESHOLD = 20
 FIN_THRESHOLD = 5
 NULL_THRESHOLD = 5
 XMAS_THRESHOLD = 5
@@ -137,32 +135,8 @@ def display_alert(message, src_ip):
 
         alert_list.append(message)
         window["-alerts-"].update(values=alert_list, scroll_to_index=len(alert_list))
-
         # Mettre à jour le timestamp de la dernière alerte pour cette IP
         alerted_ips[src_ip] = current_time
-
-
-########################################################################
-# Fonction de détection de scan SYN améliorée
-"""def detect_syn_scan(pkt):
-    if pkt.haslayer(scp.TCP) and pkt[scp.TCP].flags == 'S':  # Vérifier si le paquet est un SYN
-        src_ip = pkt[scp.IP].src
-        current_time = time.time()
-
-        # Enregistrer le timestamp de chaque tentative SYN
-        syn_attempts[src_ip].append(current_time)
-
-        # Supprimer les entrées trop anciennes (au-delà de la fenêtre de temps)
-        syn_attempts[src_ip] = [timestamp for timestamp in syn_attempts[src_ip] if current_time - timestamp <= TIME_WINDOW]
-
-        # Si le nombre de SYN dépasse le seuil dans la fenêtre de temps, alerter
-        if len(syn_attempts[src_ip]) >= SYN_THRESHOLD:
-            alert_message = f"[ALERTE] Scan SYN détecté de {src_ip} avec {len(syn_attempts[src_ip])} tentatives SYN en {TIME_WINDOW} secondes."
-            #print(alert_message)
-            #display_alert(alert_message)  # Afficher l'alerte à l'écran
-            alert_list.append(alert_message)"""
-
-################################################################
 
 
 def detect_scans(pkt):
@@ -177,9 +151,10 @@ def detect_scans(pkt):
             scan_attempts[src_ip].append(('SYN', current_time))
             syn_attempts = [t for t in scan_attempts[src_ip] if t[0] == 'SYN' and current_time - t[1] <= TIME_WINDOW]
             if len(syn_attempts) >= SYN_THRESHOLD:
-                alert_message = f"[ALERTE] Scan SYN détecté de {src_ip} avec {len(syn_attempts)} tentatives SYN."
+                alert_message = f"[ALERTE] Scan SYN détecté de {src_ip} et signalé "+datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                #alert_message = f"[ALERTE] Scan SYN détecté de {src_ip} avec {len(syn_attempts)} tentatives SYN."
                 display_alert(alert_message, src_ip)
-
+                alert_messages_sender.send_message()
         # DÉTECTION FIN
         elif pkt.haslayer(scp.TCP) and pkt[scp.TCP].flags == 'F':
             scan_attempts[src_ip].append(('FIN', current_time))
@@ -207,8 +182,6 @@ def detect_scans(pkt):
         # Nettoyage des anciennes tentatives
         scan_attempts[src_ip] = [attempt for attempt in scan_attempts[src_ip] if
                                  current_time - attempt[1] <= TIME_WINDOW]
-
-
 
 
 # Fonction pour mettre à jour et afficher les statistiques
@@ -248,6 +221,8 @@ while True:
 
     if event == "-COMBO-":
         capiface = values['-COMBO-']
+    if event == "-FILTER-":
+        filter_expression = values['-FILTERED-']
 
     if event == "-savepcap-":
         if len(pktsummarylist) > 0:
@@ -286,3 +261,4 @@ while True:
         sg.popup_scrolled(packet_details, title="Packet Details", size=(80, 20))
 
 window.close()
+
