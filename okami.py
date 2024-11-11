@@ -11,6 +11,7 @@ import time  # Pour gérer les horodatages des SYN
 from collections import defaultdict  # Pour stocker les tentatives SYN
 from PIL import Image
 import socket
+import configparser
 import alert_messages_sender
 
 
@@ -53,7 +54,7 @@ layout = [[sg.Menu(menu_def)],
            sg.Combo(values=ifaces, readonly=True, key='-COMBO-', enable_events=True, default_value=ifaces[2], text_color='#f3f3f3'),
             sg.Text('BPF Filters:', pad=((20, 0) ,0)),
             sg.Input(key='-FILTERED-', size=(70, 10), font=('Helvetica', 13),default_text="", text_color='#f3f3f3'),
-            sg.Button('Apply', button_color=('#f3f3f3', '#0a85d9'), size=(10, None), font=('Helvetica Bold', 11)),
+            sg.Button('Apply',key="-apply-",  button_color=('#f3f3f3', '#0a85d9'), size=(10, None), font=('Helvetica Bold', 11)),
            sg.Image(filename=resized_image_path, pad=((70, 0) ,0)),],
           [sg.Button("Start Capture", key="-startcap-", button_color=('#f3f3f3', '#0a85d9')),
            sg.Button("Stop Capture", key="-stopcap-", disabled=True),
@@ -91,7 +92,7 @@ def pkt_process(pkt):
     global pktsummarylist
     global pkt_list
     pkt_summary = pkt.summary()  # Obtenir un résumé du paquet
-    pktsummarylist.append(pkt_summary+datetime.now().strftime(" -%d/%m/%Y %H:%M:%S"))  # Ajouter le résumé à la liste
+    pktsummarylist.append(pkt_summary+datetime.now().strftime(" - %d/%m/%Y %H:%M:%S"))  # Ajouter le résumé à la liste
     pkt_list.append(pkt)  # Ajouter le paquet à la liste des paquets capturés
 
     # Appel de la fonction de détection de scan SYN
@@ -154,7 +155,7 @@ def detect_scans(pkt):
                 alert_message = f"[ALERTE] Scan SYN détecté de {src_ip} et signalé "+datetime.now().strftime("%d/%m/%Y %H:%M:%S")
                 #alert_message = f"[ALERTE] Scan SYN détecté de {src_ip} avec {len(syn_attempts)} tentatives SYN."
                 display_alert(alert_message, src_ip)
-                alert_messages_sender.send_message()
+                #alert_messages_sender.send_message()
         # DÉTECTION FIN
         elif pkt.haslayer(scp.TCP) and pkt[scp.TCP].flags == 'F':
             scan_attempts[src_ip].append(('FIN', current_time))
@@ -221,13 +222,13 @@ while True:
 
     if event == "-COMBO-":
         capiface = values['-COMBO-']
-    if event == "-FILTER-":
+    if event == "-apply-":
         filter_expression = values['-FILTERED-']
 
     if event == "-savepcap-":
         if len(pktsummarylist) > 0:
             file_path = sg.popup_get_file('Save as', save_as=True, no_window=True,
-                                          default_path="Okami-capture_" + datetime.now().strftime("%d-%m-%Y_%H-%M-%S"),
+                                          default_path="C:/Users/porgo/Okami-capture_" + datetime.now().strftime("%d-%m-%Y_%H-%M-%S"),
                                           default_extension='.pcap')
             if file_path:
                 scp.wrpcap(file_path, pkt_list)

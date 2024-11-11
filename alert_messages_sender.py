@@ -3,7 +3,7 @@ import locale
 locale.setlocale(locale.LC_TIME, 'fr_FR')
 from datetime import datetime
 
-webhook_url = "https://discord.com/api/webhooks/1286376044122603590/pFPOJid1FtgqbV7OtKhgivL-eiSc393d3idklHLWEGKGyJimmMylS_v13bdm3mWBWSrf"
+webhook_url = "https://discord.com/api/webhooks/1304604530264244234/WuZ5WCchXcklJ7yBmKShZGr_C7IrVyfnoIotu76Jdz_iueiAhWmjU-sYFM3b21Iif6ya"
 def send_message():
     webhook = DiscordWebhook(url=webhook_url, content="⚠️Alerte : Une activité suspects a été détectée.")
     embed = DiscordEmbed(title="Alerte Sécurité", description="Une tentative d'intrusion a été détectée.",
@@ -17,5 +17,3 @@ def send_message():
 
     # Envoyer le message
     response = webhook.execute()
-
-send_message()
