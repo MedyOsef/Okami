@@ -7,6 +7,7 @@ import platform
 from datetime import datetime
 from scapy.arch import get_if_list
 import matplotlib.pyplot as plt  # Pour les graphiques
+import matplotlib.animation as animation
 import time  # Pour gérer les horodatages des SYN
 from collections import defaultdict  # Pour stocker les tentatives SYN
 from PIL import Image

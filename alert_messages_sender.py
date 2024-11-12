@@ -1,7 +1,12 @@
 from discord_webhook import DiscordWebhook, DiscordEmbed
 import locale
-locale.setlocale(locale.LC_TIME, 'fr_FR')
 from datetime import datetime
+import platform
+
+if platform.system() == "Windows":
+    locale.setlocale(locale.LC_TIME, 'fr_FR')
+elif platform.system() == "Linux":
+    locale.setlocale(locale.LC_TIME, 'fr_FR.utf8')
 
 webhook_url = "https://discord.com/api/webhooks/1304604530264244234/WuZ5WCchXcklJ7yBmKShZGr_C7IrVyfnoIotu76Jdz_iueiAhWmjU-sYFM3b21Iif6ya"
 def send_message():
